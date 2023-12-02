@@ -1,108 +1,96 @@
 package blockchain
 
 import (
-	"fmt"
-	"merkletree/merkletree"
-	"p2p/p2p"
+    "crypto/sha256"
+    "fmt"
+    "time"
 )
 
-// Transaction represents a basic transaction in the blockchain
+// Transaction là một giao dịch cơ bản trong blockchain
 type Transaction struct {
-	Data []byte
+    Data []byte
 }
 
-// Block represents a block in the blockchain
+// Block đại diện cho một khối trong blockchain
 type Block struct {
-	Timestamp     int64
-	Transactions  []*Transaction
-	PrevBlockHash []byte
-	Hash          []byte
+    Timestamp     int64
+    Transactions  []*Transaction
+    PrevBlockHash []byte
+    Hash          []byte
 }
 
-// Blockchain represents the entire blockchain
+// Blockchain đại diện cho toàn bộ blockchain
 type Blockchain struct {
-	blocks []*Block
+    Blocks []*Block
 }
 
-// NewBlockchain creates a new blockchain with a genesis block
+// NewBlockchain tạo một blockchain mới với khối khởi tạo
 func NewBlockchain() *Blockchain {
-	genesisTransaction := &Transaction{Data: []byte("Genesis Transaction")}
-	genesisBlock := NewBlock([]byte{}, []*Transaction{genesisTransaction})
-	return &Blockchain{blocks: []*Block{genesisBlock}}
+    genesisTransaction := &Transaction{Data: []byte("Giao dịch khởi tạo")}
+    genesisBlock := NewBlock([]byte{}, []*Transaction{genesisTransaction})
+    return &Blockchain{Blocks: []*Block{genesisBlock}}
 }
 
-// NewBlock creates a new block with the given transactions and previous block hash
+// NewBlock tạo một khối mới với các giao dịch và hash khối trước đó
 func NewBlock(prevBlockHash []byte, transactions []*Transaction) *Block {
-	block := &Block{
-		Timestamp:     getCurrentTimestamp(),
-		Transactions:  transactions,
-		PrevBlockHash: prevBlockHash,
-	}
-	block.SetHash()
-	return block
+    block := &Block{
+        Timestamp:     getCurrentTimestamp(),
+        Transactions:  transactions,
+        PrevBlockHash: prevBlockHash,
+    }
+    block.SetHash()
+    return block
 }
 
-// getCurrentTimestamp returns the current timestamp
+// getCurrentTimestamp trả về timestamp hiện tại
 func getCurrentTimestamp() int64 {
-	return time.Now().Unix()
+    return time.Now().Unix()
 }
 
-// SetHash calculates and sets the hash of the block based on its fields
+// SetHash tính toán và đặt hash cho khối dựa trên các trường của nó
 func (b *Block) SetHash() {
-	headers := append(b.PrevBlockHash, getTransactionsHash(b.Transactions)...)
-	hash := sha256.New()
-	hash.Write(headers)
-	b.Hash = hash.Sum(nil)
+    headers := append(b.PrevBlockHash, getTransactionsHash(b.Transactions)...)
+    hash := sha256.New()
+    hash.Write(headers)
+    b.Hash = hash.Sum(nil)
 }
 
-// getTransactionsHash calculates the hash of all transactions in the block
+// getTransactionsHash tính toán hash của tất cả các giao dịch trong khối
 func getTransactionsHash(transactions []*Transaction) []byte {
-	var transactionsData []byte
-	for _, transaction := range transactions {
-		transactionsData = append(transactionsData, transaction.Data...)
-	}
-	hash := sha256.New()
-	hash.Write(transactionsData)
-	return hash.Sum(nil)
+    var transactionsData []byte
+    for _, transaction := range transactions {
+        transactionsData = append(transactionsData, transaction.Data...)
+    }
+    hash := sha256.New()
+    hash.Write(transactionsData)
+    return hash.Sum(nil)
 }
 
-// AddBlock adds a new block with the given transactions to the blockchain
+// AddBlock thêm một khối mới với các giao dịch cho trước vào blockchain
 func (bc *Blockchain) AddBlock(transactions []*Transaction) {
-	prevBlock := bc.blocks[len(bc.blocks)-1]
-	newBlock := NewBlock(prevBlock.Hash, transactions)
-	bc.blocks = append(bc.blocks, newBlock)
+    prevBlock := bc.Blocks[len(bc.Blocks)-1]
+    newBlock := NewBlock(prevBlock.Hash, transactions)
+    bc.Blocks = append(bc.Blocks, newBlock)
 }
 
-// PrintBlockchain prints the information of all blocks in the blockchain
+// PrintBlockchain in thông tin của tất cả các khối trong blockchain
 func (bc *Blockchain) PrintBlockchain() {
-	for _, block := range bc.blocks {
-		block.PrintBlock()
-	}
+    for _, block := range bc.Blocks {
+        block.PrintBlock()
+    }
 }
 
-// PrintBlock prints the information of a block
+// PrintBlock in thông tin của một khối
 func (b *Block) PrintBlock() {
-	fmt.Printf("Timestamp: %d\n", b.Timestamp)
-	fmt.Printf("PrevBlockHash: %x\n", b.PrevBlockHash)
-	fmt.Printf("Hash: %x\n", b.Hash)
-	fmt.Printf("Transactions: %v\n", b.Transactions)
-	fmt.Println("--------------------")
+    fmt.Printf("Timestamp: %d\n", b.Timestamp)
+    fmt.Printf("PrevBlockHash: %x\n", b.PrevBlockHash)
+    fmt.Printf("Hash: %x\n", b.Hash)
+    fmt.Printf("Transactions: %v\n", b.Transactions)
+    fmt.Println("--------------------")
 }
 
-// HandleP2PMessage handles incoming P2P messages
-func HandleP2PMessage() {
-	for {
-		select {
-		case newTransactions := <-p2p.Blocks:
-			validateAndAddTransactions(newTransactions)
-		}
-	}
-}
-
-// validateAndAddTransactions validates and adds new transactions to the blockchain
-func validateAndAddTransactions(transactions []*Transaction) {
-	// Perform validation logic here if needed
-
-	// Add valid transactions to the blockchain
-	blockchain.AddBlock(transactions)
+// BroadcastMerkleTree log một thông điệp khi phát sóng dữ liệu của cây Merkle
+func (bc *Blockchain) BroadcastMerkleTree() {
+    fmt.Println("Phát sóng dữ liệu cây Merkle")
+    // Gọi hàm GetMerkleTreeData() nếu nó tồn tại
 }

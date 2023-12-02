@@ -1,4 +1,4 @@
-module BLC
+module github.com/nnkienn/lab1-blc
 
 go 1.21.4
 
