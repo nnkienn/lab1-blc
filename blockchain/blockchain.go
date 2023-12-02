@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -74,4 +75,21 @@ func (bc *Blockchain) GetTransactions() []*Transaction {
 		return bc.Blocks[len(bc.Blocks)-1].Transactions
 	}
 	return nil
+}
+
+func (bc *Blockchain) PrintBlockchain() {
+	bc.mutex.Lock()
+	defer bc.mutex.Unlock()
+
+	for _, block := range bc.Blocks {
+		block.PrintBlock()
+	}
+}
+
+func (b *Block) PrintBlock() {
+	fmt.Printf("Timestamp: %d\n", b.Timestamp)
+	fmt.Printf("PrevBlockHash: %x\n", b.PrevBlockHash)
+	fmt.Printf("Hash: %x\n", b.Hash)
+	fmt.Printf("Transactions: %v\n", b.Transactions)
+	fmt.Println("--------------------")
 }
