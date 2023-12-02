@@ -1,9 +1,9 @@
+// blockchain.go
+
 package blockchain
 
 import (
 	"crypto/sha256"
-	"fmt"
-	"sync"
 	"time"
 )
 
@@ -20,76 +20,60 @@ type Block struct {
 
 type Blockchain struct {
 	Blocks []*Block
-	mutex  sync.Mutex
 }
 
-var blockchainInstance = &Blockchain{
-	Blocks: []*Block{},
-}
-
-func GetBlockchainInstance() *Blockchain {
-	return blockchainInstance
-}
-
-func (b *Block) SetHash() {
-	headers := append(b.PrevBlockHash, getTransactionsHash(b.Transactions)...)
-	hash := sha256.New()
-	hash.Write(headers)
-	b.Hash = hash.Sum(nil)
-}
-
-func getTransactionsHash(transactions []*Transaction) []byte {
-	var transactionsData []byte
-	for _, transaction := range transactions {
-		transactionsData = append(transactionsData, transaction.Data...)
-	}
-	hash := sha256.New()
-	hash.Write(transactionsData)
-	return hash.Sum(nil)
+func NewBlockchain() *Blockchain {
+	return &Blockchain{Blocks: []*Block{genesisBlock()}}
 }
 
 func (bc *Blockchain) AddBlock(transactions []*Transaction) {
-	bc.mutex.Lock()
-	defer bc.mutex.Unlock()
-
-	var prevBlockHash []byte
-	if len(bc.Blocks) > 0 {
-		prevBlockHash = bc.Blocks[len(bc.Blocks)-1].Hash
-	}
-
-	newBlock := &Block{
-		Timestamp:     time.Now().Unix(),
-		Transactions:  transactions,
-		PrevBlockHash: prevBlockHash,
-	}
-	newBlock.SetHash()
-
+	prevBlock := bc.Blocks[len(bc.Blocks)-1]
+	newBlock := generateBlock(prevBlock, transactions)
 	bc.Blocks = append(bc.Blocks, newBlock)
 }
 
-func (bc *Blockchain) GetTransactions() []*Transaction {
-	bc.mutex.Lock()
-	defer bc.mutex.Unlock()
-
-	if len(bc.Blocks) > 0 {
-		return bc.Blocks[len(bc.Blocks)-1].Transactions
-	}
-	return nil
+func (bc *Blockchain) GetLatestBlock() *Block {
+	return bc.Blocks[len(bc.Blocks)-1]
 }
 
-func (bc *Blockchain) PrintBlockchain() {
-	bc.mutex.Lock()
-	defer bc.mutex.Unlock()
-
-	for _, block := range bc.Blocks {
-		block.PrintBlock()
-	}
+func (bc *Blockchain) GetBlocks() []*Block {
+	return bc.Blocks
 }
 
-func (b *Block) PrintBlock() {
-	fmt.Printf("Timestamp: %d\n", b.Timestamp)
-	fmt.Printf("PrevBlockHash: %x\n", b.PrevBlockHash)
-	fmt.Printf("Hash: %x\n", b.Hash)
-	fmt.Printf("Transactions: %v\n", b.Transactions)
-	fmt.Println("--------------------")
+
+
+
+func generateBlock(prevBlock *Block, transactions []*Transaction) *Block {
+	newBlock := &Block{
+		Timestamp:     time.Now().Unix(),
+		Transactions:  transactions,
+		PrevBlockHash: prevBlock.Hash,
+	}
+
+	newBlock.SetHash()
+	return newBlock
+}
+
+func (b *Block) SetHash() {
+	headers := append(b.PrevBlockHash, b.HashTransaction()...)
+	headers = append(headers, []byte(string(b.Timestamp))...)
+	hash := sha256.Sum256(headers)
+	b.Hash = hash[:]
+}
+
+func (b *Block) HashTransaction() []byte {
+	var transactionsData []byte
+	for _, transaction := range b.Transactions {
+		transactionsData = append(transactionsData, transaction.Data...)
+	}
+	transactionHash := sha256.Sum256(transactionsData)
+	return transactionHash[:]
+}
+
+func genesisBlock() *Block {
+	return &Block{
+		Timestamp:     time.Now().Unix(),
+		Transactions:  []*Transaction{},
+		PrevBlockHash: []byte{},
+	}
 }

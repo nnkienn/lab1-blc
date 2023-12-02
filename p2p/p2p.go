@@ -1,3 +1,5 @@
+// p2p.go
+
 package p2p
 
 import (
@@ -12,12 +14,12 @@ import (
 type P2P struct {
 	Nodes  []*websocket.Conn
 	Mutex  sync.Mutex
-	Blocks chan []*blockchain.Transaction
+	Blocks chan []*blockchain.Block
 }
 
 var p2pInstance = &P2P{
 	Nodes:  []*websocket.Conn{},
-	Blocks: make(chan []*blockchain.Transaction),
+	Blocks: make(chan []*blockchain.Block),
 }
 
 func GetP2PInstance() *P2P {
@@ -31,9 +33,12 @@ func (p *P2P) RegisterNode(conn *websocket.Conn) {
 }
 
 func (p *P2P) BroadcastBlockchain() {
-	latestTransactions := blockchain.GetBlockchainInstance().GetTransactions()
-	p.Blocks <- latestTransactions
+	latestBlocks := blockchain.NewBlockchain().GetBlocks()
+	p.Blocks <- latestBlocks
 }
+
+// ... (other methods)
+
 
 func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
@@ -49,7 +54,12 @@ func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p.RegisterNode(conn)
+	p.BroadcastBlockchain()
 
+	go p.HandleP2PMessage(conn)
+}
+
+func (p *P2P) HandleP2PMessage(conn *websocket.Conn) {
 	for {
 		var msg map[string]interface{}
 		err := conn.ReadJSON(&msg)
@@ -60,6 +70,14 @@ func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 
 		if msg["type"] == "blocks" {
 			p.BroadcastBlockchain()
+		}
+	}
+}
+
+func (p *P2P) BroadcastMessage(msg map[string]interface{}) {
+	for _, node := range p.Nodes {
+		if err := node.WriteJSON(msg); err != nil {
+			log.Println(err)
 		}
 	}
 }
