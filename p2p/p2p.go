@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/nnkienn/lab1-blc/blockchain"
+
 )
 
 // P2P represents the Peer-to-Peer communication

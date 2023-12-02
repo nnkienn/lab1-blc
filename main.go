@@ -5,11 +5,9 @@ import (
 	"log"
 	"net/http"
 	"time"
-
 	"github.com/gorilla/mux"
 	"github.com/nnkienn/lab1-blc/blockchain"
-	"github.com/nnnkienn/lab1-blc/p2p/merkletree"
-	"github.com/yourusername/blockchain/p2p"
+	"github.com/nnkienn/lab1-blc/p2p"
 )
 
 var blockchain = blockchain.NewBlockchain()
