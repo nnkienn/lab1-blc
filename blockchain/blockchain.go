@@ -2,18 +2,14 @@ package blockchain
 
 import (
 	"crypto/sha256"
-	"fmt"
+	"sync"
 	"time"
-
-	"github.com/nnkienn/lab1-blc/p2p"
 )
 
-// Transaction represents a basic transaction in the blockchain
 type Transaction struct {
 	Data []byte
 }
 
-// Block represents a block in the blockchain
 type Block struct {
 	Timestamp     int64
 	Transactions  []*Transaction
@@ -21,35 +17,19 @@ type Block struct {
 	Hash          []byte
 }
 
-// Blockchain represents the entire blockchain
 type Blockchain struct {
-	blocks []*Block
+	Blocks []*Block
+	mutex  sync.Mutex
 }
 
-// NewBlockchain creates a new blockchain with a genesis block
-func NewBlockchain() *Blockchain {
-	genesisTransaction := &Transaction{Data: []byte("Genesis Transaction")}
-	genesisBlock := NewBlock([]byte{}, []*Transaction{genesisTransaction})
-	return &Blockchain{blocks: []*Block{genesisBlock}}
+var blockchainInstance = &Blockchain{
+	Blocks: []*Block{},
 }
 
-// NewBlock creates a new block with the given transactions and previous block hash
-func NewBlock(prevBlockHash []byte, transactions []*Transaction) *Block {
-	block := &Block{
-		Timestamp:     getCurrentTimestamp(),
-		Transactions:  transactions,
-		PrevBlockHash: prevBlockHash,
-	}
-	block.SetHash()
-	return block
+func GetBlockchainInstance() *Blockchain {
+	return blockchainInstance
 }
 
-// getCurrentTimestamp returns the current timestamp
-func getCurrentTimestamp() int64 {
-	return time.Now().Unix()
-}
-
-// SetHash calculates and sets the hash of the block based on its fields
 func (b *Block) SetHash() {
 	headers := append(b.PrevBlockHash, getTransactionsHash(b.Transactions)...)
 	hash := sha256.New()
@@ -57,7 +37,6 @@ func (b *Block) SetHash() {
 	b.Hash = hash.Sum(nil)
 }
 
-// getTransactionsHash calculates the hash of all transactions in the block
 func getTransactionsHash(transactions []*Transaction) []byte {
 	var transactionsData []byte
 	for _, transaction := range transactions {
@@ -68,43 +47,31 @@ func getTransactionsHash(transactions []*Transaction) []byte {
 	return hash.Sum(nil)
 }
 
-// AddBlock adds a new block with the given transactions to the blockchain
 func (bc *Blockchain) AddBlock(transactions []*Transaction) {
-	prevBlock := bc.blocks[len(bc.blocks)-1]
-	newBlock := NewBlock(prevBlock.Hash, transactions)
-	bc.blocks = append(bc.blocks, newBlock)
-}
+	bc.mutex.Lock()
+	defer bc.mutex.Unlock()
 
-// PrintBlockchain prints the information of all blocks in the blockchain
-func (bc *Blockchain) PrintBlockchain() {
-	for _, block := range bc.blocks {
-		block.PrintBlock()
+	var prevBlockHash []byte
+	if len(bc.Blocks) > 0 {
+		prevBlockHash = bc.Blocks[len(bc.Blocks)-1].Hash
 	}
-}
 
-// PrintBlock prints the information of a block
-func (b *Block) PrintBlock() {
-	fmt.Printf("Timestamp: %d\n", b.Timestamp)
-	fmt.Printf("PrevBlockHash: %x\n", b.PrevBlockHash)
-	fmt.Printf("Hash: %x\n", b.Hash)
-	fmt.Printf("Transactions: %v\n", b.Transactions)
-	fmt.Println("--------------------")
-}
-
-// HandleP2PMessage handles incoming P2P messages
-func HandleP2PMessage() {
-	for {
-		select {
-		case newTransactions := <-p2p.Blocks:
-			validateAndAddTransactions(newTransactions)
-		}
+	newBlock := &Block{
+		Timestamp:     time.Now().Unix(),
+		Transactions:  transactions,
+		PrevBlockHash: prevBlockHash,
 	}
+	newBlock.SetHash()
+
+	bc.Blocks = append(bc.Blocks, newBlock)
 }
 
-// validateAndAddTransactions validates and adds new transactions to the blockchain
-func validateAndAddTransactions(transactions []*Transaction) {
-	// Perform validation logic here if needed
+func (bc *Blockchain) GetTransactions() []*Transaction {
+	bc.mutex.Lock()
+	defer bc.mutex.Unlock()
 
-	// Add valid transactions to the blockchain
-	blockchain.AddBlock(transactions)
+	if len(bc.Blocks) > 0 {
+		return bc.Blocks[len(bc.Blocks)-1].Transactions
+	}
+	return nil
 }

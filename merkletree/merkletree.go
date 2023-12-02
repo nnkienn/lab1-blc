@@ -2,26 +2,19 @@ package merkletree
 
 import (
 	"crypto/sha256"
+
+	"github.com/nnkienn/lab1-blc/blockchain"
 )
 
-// Transaction represents a basic transaction in the blockchain
-type Transaction struct {
-	Data []byte
-}
-
-// MerkleNode represents a node in the Merkle Tree
 type MerkleNode struct {
 	Hash        []byte
 	Left, Right *MerkleNode
-	Transaction *Transaction
 }
 
-// MerkleTree represents the Merkle Tree
 type MerkleTree struct {
 	Root *MerkleNode
 }
 
-// NewMerkleNode creates a new MerkleNode
 func NewMerkleNode(left, right *MerkleNode, data []byte) *MerkleNode {
 	var hash []byte
 	if left == nil && right == nil {
@@ -34,13 +27,12 @@ func NewMerkleNode(left, right *MerkleNode, data []byte) *MerkleNode {
 	return &MerkleNode{Hash: hash, Left: left, Right: right}
 }
 
-// NewMerkleTree creates a new MerkleTree
-func NewMerkleTree(transactions []*Transaction) *MerkleTree {
+func NewMerkleTree(transactions []*blockchain.Transaction) *MerkleTree {
 	var nodes []*MerkleNode
 
 	for _, transaction := range transactions {
 		hash := calculateHash(transaction.Data)
-		nodes = append(nodes, &MerkleNode{Hash: hash, Transaction: transaction})
+		nodes = append(nodes, &MerkleNode{Hash: hash})
 	}
 
 	for len(nodes) > 1 {
@@ -63,31 +55,8 @@ func NewMerkleTree(transactions []*Transaction) *MerkleTree {
 	return &MerkleTree{Root: nodes[0]}
 }
 
-// calculateHash calculates the SHA-256 hash of the data
 func calculateHash(data []byte) []byte {
 	hash := sha256.New()
 	hash.Write(data)
 	return hash.Sum(nil)
-}
-
-// GetMerkleTreeData returns the data of the MerkleTree
-func (mt *MerkleTree) GetMerkleTreeData() []*Transaction {
-	var transactions []*Transaction
-	mt.traverse(mt.Root, &transactions)
-	return transactions
-}
-
-// traverse traverses the MerkleTree and collects transaction data
-func (mt *MerkleTree) traverse(node *MerkleNode, transactions *[]*Transaction) {
-	if node == nil {
-		return
-	}
-
-	if node.Left == nil && node.Right == nil {
-		*transactions = append(*transactions, node.Transaction)
-		return
-	}
-
-	mt.traverse(node.Left, transactions)
-	mt.traverse(node.Right, transactions)
 }

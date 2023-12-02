@@ -7,34 +7,34 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/nnkienn/lab1-blc/blockchain"
-
 )
 
-// P2P represents the Peer-to-Peer communication
 type P2P struct {
 	Nodes  []*websocket.Conn
 	Mutex  sync.Mutex
-	Blocks chan []*Transaction
+	Blocks chan []*blockchain.Transaction
 }
 
-var p2p = &P2P{
+var p2pInstance = &P2P{
 	Nodes:  []*websocket.Conn{},
-	Blocks: make(chan []*Transaction),
+	Blocks: make(chan []*blockchain.Transaction),
 }
 
-// RegisterNode registers a new node
+func GetP2PInstance() *P2P {
+	return p2pInstance
+}
+
 func (p *P2P) RegisterNode(conn *websocket.Conn) {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
 	p.Nodes = append(p.Nodes, conn)
 }
 
-// BroadcastMerkleTree broadcasts the MerkleTree data to all nodes
-func (p *P2P) BroadcastMerkleTree() {
-	p.Blocks <- merkletree.GetMerkleTreeData()
+func (p *P2P) BroadcastBlockchain() {
+	latestTransactions := blockchain.GetBlockchainInstance().GetTransactions()
+	p.Blocks <- latestTransactions
 }
 
-// HandleP2PConnection handles a new P2P connection
 func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
@@ -58,8 +58,8 @@ func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if msg["type"] == "merkle" {
-			p.BroadcastMerkleTree()
+		if msg["type"] == "blocks" {
+			p.BroadcastBlockchain()
 		}
 	}
 }

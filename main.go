@@ -1,49 +1,40 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
+
 	"github.com/gorilla/mux"
 	"github.com/nnkienn/lab1-blc/blockchain"
 	"github.com/nnkienn/lab1-blc/p2p"
 )
 
-var blockchain = blockchain.NewBlockchain()
+var bc = blockchain.GetBlockchainInstance()
+var p2pHandler = p2p.GetP2PInstance()
 
 func main() {
 	r := mux.NewRouter()
 
-	// Block-related endpoints
 	r.HandleFunc("/blocks", GetBlocksEndpoint).Methods("GET")
 	r.HandleFunc("/mineBlock", MineBlockEndpoint).Methods("POST")
 
-	// WebSocket endpoint for P2P
-	r.HandleFunc("/ws", p2p.WebSocketHandler)
+	r.HandleFunc("/ws", p2pHandler.HandleP2PConnection)
 
-	// Start P2P message handler
-	go blockchain.HandleP2PMessage()
-
-	// Periodically broadcast the MerkleTree
-	go func() {
-		for {
-			p2p.BroadcastMerkleTree()
-			time.Sleep(10 * time.Second)
-		}
-	}()
+	go PeriodicallyBroadcastMerkleTree()
 
 	port := ":3001"
 	fmt.Println("Listening on port", port)
 	log.Fatal(http.ListenAndServe(port, r))
 }
 
-// GetBlocksEndpoint returns the information of all blocks in the blockchain
+
 func GetBlocksEndpoint(w http.ResponseWriter, r *http.Request) {
-	blockchain.PrintBlockchain()
+	bc.PrintBlockchain()
 }
 
-// MineBlockEndpoint mines a new block with the given transactions
 func MineBlockEndpoint(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 
@@ -53,9 +44,16 @@ func MineBlockEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blockchain.AddBlock([]*blockchain.Transaction{&blockchain.Transaction{Data: []byte(data["data"])}})
-	p2p.BroadcastMerkleTree()
+	bc.AddBlock([]*blockchain.Transaction{&blockchain.Transaction{Data: []byte(data["data"])}})
+	p2pHandler.BroadcastBlockchain()
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Block mined and broadcasted"))
+}
+
+func PeriodicallyBroadcastMerkleTree() {
+	for {
+		p2pHandler.BroadcastBlockchain()
+		time.Sleep(10 * time.Second)
+	}
 }
