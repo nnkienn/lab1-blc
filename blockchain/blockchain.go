@@ -5,10 +5,13 @@ package blockchain
 import (
 	"crypto/sha256"
 	"time"
+
+	"github.com/nnkienn/lab1-blc/merkletree"
 )
 
 type Transaction struct {
-	Data []byte
+	Data       []byte
+	MerkleRoot []byte
 }
 
 type Block struct {
@@ -16,6 +19,7 @@ type Block struct {
 	Transactions  []*Transaction
 	PrevBlockHash []byte
 	Hash          []byte
+	MerkleRoot    []byte
 }
 
 type Blockchain struct {
@@ -40,15 +44,15 @@ func (bc *Blockchain) GetBlocks() []*Block {
 	return bc.Blocks
 }
 
-
-
-
 func generateBlock(prevBlock *Block, transactions []*Transaction) *Block {
 	newBlock := &Block{
 		Timestamp:     time.Now().Unix(),
 		Transactions:  transactions,
 		PrevBlockHash: prevBlock.Hash,
 	}
+
+	// Calculate the Merkle root for transactions
+	newBlock.MerkleRoot = buildMerkleTree(transactions).Root.Hash
 
 	newBlock.SetHash()
 	return newBlock
@@ -64,7 +68,7 @@ func (b *Block) SetHash() {
 func (b *Block) HashTransaction() []byte {
 	var transactionsData []byte
 	for _, transaction := range b.Transactions {
-		transactionsData = append(transactionsData, transaction.Data...)
+		transactionsData = append(transactionsData, transaction.MerkleRoot...)
 	}
 	transactionHash := sha256.Sum256(transactionsData)
 	return transactionHash[:]
@@ -75,5 +79,15 @@ func genesisBlock() *Block {
 		Timestamp:     time.Now().Unix(),
 		Transactions:  []*Transaction{},
 		PrevBlockHash: []byte{},
+		MerkleRoot:    []byte{}, // Add a placeholder Merkle root for the genesis block
 	}
+}
+
+func buildMerkleTree(transactions []*Transaction) *merkletree.MerkleTree {
+	var txHashes [][]byte
+	for _, tx := range transactions {
+		txHashes = append(txHashes, tx.Data)
+	}
+
+	return merkletree.NewMerkleTree(txHashes)
 }

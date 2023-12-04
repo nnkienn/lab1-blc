@@ -1,3 +1,5 @@
+// main.go
+
 package main
 
 import (
@@ -19,26 +21,26 @@ var p2pHandler = p2p.GetP2PInstance()
 func main() {
 	var ports []string
 
-	// Kiểm tra xem có đối số dòng lệnh không
+	// Check if there are command line arguments
 	if len(os.Args) > 1 {
 		ports = os.Args[1:]
 	} else {
-		// Nếu không có đối số, sử dụng cổng mặc định 3001
+		// If no arguments, use the default port 3001
 		ports = []string{"3001"}
 	}
 
-	// Tạo một danh sách các router và các worker goroutine
+	// Create a list of routers and worker goroutines
 	routers := make([]*mux.Router, len(ports))
 	for i, port := range ports {
-		// Tạo một router mới cho mỗi cổng
+		// Create a new router for each port
 		routers[i] = mux.NewRouter()
 
-		// Đăng ký các endpoint của router
+		// Register router endpoints
 		routers[i].HandleFunc("/blocks", GetBlocksEndpoint).Methods("GET")
 		routers[i].HandleFunc("/mineBlock", MineBlockEndpoint).Methods("POST")
 		routers[i].HandleFunc("/ws", p2pHandler.HandleP2PConnection)
 
-		// Bắt đầu một worker goroutine cho mỗi cổng
+		// Start a worker goroutine for each port
 		go func(p string, r *mux.Router) {
 			port := ":" + p
 			fmt.Println("Listening on port", port)
@@ -46,19 +48,18 @@ func main() {
 		}(port, routers[i])
 	}
 
-	
+	go PeriodicallyBroadcastMerkleTree()
+
+	// Wait for all worker goroutines to complete
+	select {}
 }
 
-// ... (rest of your code)
-
-
+// GetBlocksEndpoint returns the blockchain as JSON
 func GetBlocksEndpoint(w http.ResponseWriter, r *http.Request) {
-	// Return the blockchain as JSON
 	w.Header().Set("Content-Type", "application/json")
 
 	blocks := bc.GetBlocks()
 
-	// Loop through transactions and print their data
 	for _, block := range blocks {
 		for _, transaction := range block.Transactions {
 			fmt.Printf("Transaction Data: %s\n", string(transaction.Data))
@@ -68,6 +69,7 @@ func GetBlocksEndpoint(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(blocks)
 }
 
+// MineBlockEndpoint mines a new block and broadcasts it
 func MineBlockEndpoint(w http.ResponseWriter, r *http.Request) {
 	var data map[string]string
 
@@ -77,17 +79,17 @@ func MineBlockEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transaction := &blockchain.Transaction{Data: []byte(data["data"])}
-	bc.AddBlock([]*blockchain.Transaction{transaction})
-	p2pHandler.BroadcastBlockchain()
+	// Mine a new block with the provided data
+	p2pHandler.MineAndBroadcastBlock(data["data"])
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Block mined and broadcasted"))
 }
 
+// PeriodicallyBroadcastMerkleTree broadcasts the Merkle tree periodically
 func PeriodicallyBroadcastMerkleTree() {
 	for {
-		p2pHandler.BroadcastBlockchain()
+		p2pHandler.BroadcastMerkleTree()
 		time.Sleep(10 * time.Second)
 	}
 }

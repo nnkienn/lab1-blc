@@ -3,6 +3,7 @@
 package p2p
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -14,12 +15,12 @@ import (
 type P2P struct {
 	Nodes  []*websocket.Conn
 	Mutex  sync.Mutex
-	Blocks chan []*blockchain.Block
+	Blocks chan *blockchain.Block
 }
 
 var p2pInstance = &P2P{
 	Nodes:  []*websocket.Conn{},
-	Blocks: make(chan []*blockchain.Block),
+	Blocks: make(chan *blockchain.Block),
 }
 
 func GetP2PInstance() *P2P {
@@ -33,12 +34,30 @@ func (p *P2P) RegisterNode(conn *websocket.Conn) {
 }
 
 func (p *P2P) BroadcastBlockchain() {
-	latestBlocks := blockchain.NewBlockchain().GetBlocks()
-	p.Blocks <- latestBlocks
+	latestBlock := blockchain.NewBlockchain().GetLatestBlock()
+	p.Blocks <- latestBlock
 }
 
-// ... (other methods)
+func (p *P2P) BroadcastMerkleTree() {
+	latestBlock := blockchain.NewBlockchain().GetLatestBlock()
+	transactions := latestBlock.Transactions
+	merkleTree := blockchain.BuildMerkleTree(transactions)
+	merkleTreeJSON, _ := json.Marshal(merkleTree)
+	message := map[string]interface{}{"type": "merkle_tree", "data": string(merkleTreeJSON)}
 
+	for _, node := range p.Nodes {
+		if err := node.WriteJSON(message); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func (p *P2P) MineAndBroadcastBlock(data string) {
+	transaction := blockchain.NewTransaction([]byte(data))
+	bc := blockchain.NewBlockchain()
+	bc.AddBlock([]*blockchain.Transaction{transaction})
+	p.BroadcastBlockchain()
+}
 
 func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
@@ -55,6 +74,7 @@ func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
 
 	p.RegisterNode(conn)
 	p.BroadcastBlockchain()
+	p.BroadcastMerkleTree()
 
 	go p.HandleP2PMessage(conn)
 }
@@ -68,8 +88,16 @@ func (p *P2P) HandleP2PMessage(conn *websocket.Conn) {
 			return
 		}
 
-		if msg["type"] == "blocks" {
+		switch msg["type"] {
+		case "blocks":
 			p.BroadcastBlockchain()
+		case "merkle_tree":
+			p.BroadcastMerkleTree()
+		case "mine_block":
+			data, ok := msg["data"].(string)
+			if ok {
+				p.MineAndBroadcastBlock(data)
+			}
 		}
 	}
 }
