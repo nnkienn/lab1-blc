@@ -46,10 +46,7 @@ func main() {
 		}(port, routers[i])
 	}
 
-	go PeriodicallyBroadcastMerkleTree()
-
-	// Đợi tất cả các worker goroutine hoàn thành
-	select {}
+	
 }
 
 // ... (rest of your code)
