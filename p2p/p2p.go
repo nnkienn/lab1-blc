@@ -41,7 +41,7 @@ func (p *P2P) BroadcastBlockchain() {
 func (p *P2P) BroadcastMerkleTree() {
 	latestBlock := blockchain.NewBlockchain().GetLatestBlock()
 	transactions := latestBlock.Transactions
-	merkleTree := blockchain.BuildMerkleTree(transactions)
+	merkleTree := blockchain.buildMerkleTree(transactions)  // Correct function call
 	merkleTreeJSON, _ := json.Marshal(merkleTree)
 	message := map[string]interface{}{"type": "merkle_tree", "data": string(merkleTreeJSON)}
 

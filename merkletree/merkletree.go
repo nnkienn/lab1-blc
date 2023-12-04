@@ -1,17 +1,17 @@
-// merkletree.go
-
 package merkletree
 
 import (
 	"crypto/sha256"
 )
 
+// MerkleNode represents a node in the Merkle tree
 type MerkleNode struct {
 	Hash  []byte
 	Left  *MerkleNode
 	Right *MerkleNode
 }
 
+// MerkleTree represents the Merkle tree
 type MerkleTree struct {
 	Root *MerkleNode
 }

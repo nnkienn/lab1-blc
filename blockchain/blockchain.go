@@ -1,19 +1,18 @@
-// blockchain.go
-
 package blockchain
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"time"
-
 	"github.com/nnkienn/lab1-blc/merkletree"
 )
 
+// Transaction represents a single transaction in the blockchain
 type Transaction struct {
-	Data       []byte
-	MerkleRoot []byte
+	Data []byte
 }
 
+// Block represents a block in the blockchain
 type Block struct {
 	Timestamp     int64
 	Transactions  []*Transaction
@@ -22,72 +21,49 @@ type Block struct {
 	MerkleRoot    []byte
 }
 
-type Blockchain struct {
-	Blocks []*Block
+// NewTransaction creates a new transaction
+func NewTransaction(data []byte) *Transaction {
+	return &Transaction{Data: data}
 }
 
-func NewBlockchain() *Blockchain {
-	return &Blockchain{Blocks: []*Block{genesisBlock()}}
-}
-
-func (bc *Blockchain) AddBlock(transactions []*Transaction) {
-	prevBlock := bc.Blocks[len(bc.Blocks)-1]
-	newBlock := generateBlock(prevBlock, transactions)
-	bc.Blocks = append(bc.Blocks, newBlock)
-}
-
-func (bc *Blockchain) GetLatestBlock() *Block {
-	return bc.Blocks[len(bc.Blocks)-1]
-}
-
-func (bc *Blockchain) GetBlocks() []*Block {
-	return bc.Blocks
-}
-
-func generateBlock(prevBlock *Block, transactions []*Transaction) *Block {
-	newBlock := &Block{
+// NewBlock creates a new block in the blockchain
+func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
+	block := &Block{
 		Timestamp:     time.Now().Unix(),
 		Transactions:  transactions,
-		PrevBlockHash: prevBlock.Hash,
+		PrevBlockHash: prevBlockHash,
 	}
 
-	// Calculate the Merkle root for transactions
-	newBlock.MerkleRoot = buildMerkleTree(transactions).Root.Hash
+	// Calculate Merkle Root
+	block.calculateMerkleRoot()
 
-	newBlock.SetHash()
-	return newBlock
+	// Calculate Block Hash
+	block.calculateHash()
+
+	return block
 }
 
-func (b *Block) SetHash() {
-	headers := append(b.PrevBlockHash, b.HashTransaction()...)
-	headers = append(headers, []byte(string(b.Timestamp))...)
-	hash := sha256.Sum256(headers)
-	b.Hash = hash[:]
-}
+// calculateMerkleRoot calculates the Merkle Root of a block's transactions
+func (block *Block) calculateMerkleRoot() {
+	var transactionData [][]byte
 
-func (b *Block) HashTransaction() []byte {
-	var transactionsData []byte
-	for _, transaction := range b.Transactions {
-		transactionsData = append(transactionsData, transaction.MerkleRoot...)
-	}
-	transactionHash := sha256.Sum256(transactionsData)
-	return transactionHash[:]
-}
-
-func genesisBlock() *Block {
-	return &Block{
-		Timestamp:     time.Now().Unix(),
-		Transactions:  []*Transaction{},
-		PrevBlockHash: []byte{},
-		MerkleRoot:    []byte{}, // Add a placeholder Merkle root for the genesis block
-	}
-}
-
-func buildMerkleTree(transactions []*Transaction) *merkletree.MerkleTree {
-	var txHashes [][]byte
-	for _, tx := range transactions {
-		txHashes = append(txHashes, tx.Data)
+	for _, tx := range block.Transactions {
+		transactionData = append(transactionData, tx.Data)
 	}
 
-	return merkletree.NewMerkleTree(txHashes)
+	merkleTree := NewMerkleTree(transactionData)
+	block.MerkleRoot = merkleTree.Root.Hash
+}
+
+// calculateHash calculates the hash of the block
+func (block *Block) calculateHash() {
+	header := append(block.PrevBlockHash, block.MerkleRoot...)
+	header = append(header, []byte(string(block.Timestamp))...)
+	hash := sha256.Sum256(header)
+	block.Hash = hash[:]
+}
+
+// HexHash returns the hexadecimal representation of the block's hash
+func (block *Block) HexHash() string {
+	return hex.EncodeToString(block.Hash)
 }
