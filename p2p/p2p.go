@@ -1,111 +1,107 @@
-// p2p.go
-
 package p2p
 
 import (
+	"bufio"
 	"encoding/json"
-	"log"
-	"net/http"
-	"sync"
-
-	"github.com/gorilla/websocket"
+	"fmt"
+	"net"
+	"strings"
 	"github.com/nnkienn/lab1-blc/blockchain"
 )
 
-type P2P struct {
-	Nodes  []*websocket.Conn
-	Mutex  sync.Mutex
-	Blocks chan *blockchain.Block
+// P2PNode represents a P2P node
+type P2PNode struct {
+	Port       string
+	Blockchain *blockchain.Blockchain
 }
 
-var p2pInstance = &P2P{
-	Nodes:  []*websocket.Conn{},
-	Blocks: make(chan *blockchain.Block),
-}
-
-func GetP2PInstance() *P2P {
-	return p2pInstance
-}
-
-func (p *P2P) RegisterNode(conn *websocket.Conn) {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	p.Nodes = append(p.Nodes, conn)
-}
-
-func (p *P2P) BroadcastBlockchain() {
-	latestBlock := blockchain.NewBlockchain().GetLatestBlock()
-	p.Blocks <- latestBlock
-}
-
-func (p *P2P) BroadcastMerkleTree() {
-	latestBlock := blockchain.NewBlockchain().GetLatestBlock()
-	transactions := latestBlock.Transactions
-	merkleTree := blockchain.buildMerkleTree(transactions)  // Correct function call
-	merkleTreeJSON, _ := json.Marshal(merkleTree)
-	message := map[string]interface{}{"type": "merkle_tree", "data": string(merkleTreeJSON)}
-
-	for _, node := range p.Nodes {
-		if err := node.WriteJSON(message); err != nil {
-			log.Println(err)
-		}
-	}
-}
-
-func (p *P2P) MineAndBroadcastBlock(data string) {
-	transaction := blockchain.NewTransaction([]byte(data))
-	bc := blockchain.NewBlockchain()
-	bc.AddBlock([]*blockchain.Transaction{transaction})
-	p.BroadcastBlockchain()
-}
-
-func (p *P2P) HandleP2PConnection(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
-
-	conn, err := upgrader.Upgrade(w, r, nil)
+// StartP2PServer starts the P2P server
+func (node *P2PNode) StartP2PServer() {
+	ln, err := net.Listen("tcp", ":"+node.Port)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("Error starting server:", err)
 		return
 	}
 
-	p.RegisterNode(conn)
-	p.BroadcastBlockchain()
-	p.BroadcastMerkleTree()
+	fmt.Println("P2P Server is listening on port", node.Port)
 
-	go p.HandleP2PMessage(conn)
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection:", err)
+			continue
+		}
+
+		go node.handleConnection(conn)
+	}
 }
 
-func (p *P2P) HandleP2PMessage(conn *websocket.Conn) {
-	for {
-		var msg map[string]interface{}
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			log.Println(err)
+// handleConnection handles incoming connections
+func (node *P2PNode) handleConnection(conn net.Conn) {
+	defer conn.Close()
+
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		data := scanner.Text()
+		fmt.Println("Received:", data)
+
+		switch {
+		case strings.HasPrefix(data, "QUERY"):
+			queryParts := strings.Split(data, ":")
+			if len(queryParts) == 2 {
+				blockHash := queryParts[1]
+				node.queryBlock(blockHash, conn)
+			} else {
+				node.sendResponse(conn, "Invalid QUERY format")
+			}
+		case strings.HasPrefix(data, "ADD"):
+			dataParts := strings.Split(data, ":")
+			if len(dataParts) == 2 {
+				transactionData := dataParts[1]
+				node.addTransaction([]byte(transactionData))
+				node.sendResponse(conn, "Transaction added to the blockchain")
+			} else {
+				node.sendResponse(conn, "Invalid ADD format")
+			}
+		default:
+			node.sendResponse(conn, "Unknown command")
+		}
+	}
+}
+
+// queryBlock handles the QUERY command
+func (node *P2PNode) queryBlock(blockHash string, conn net.Conn) {
+	node.Blockchain.Mu.Lock()
+	defer node.Blockchain.Mu.Unlock()
+
+	for _, block := range node.Blockchain.Blocks {
+		if block.HexHash() == blockHash {
+			response, err := json.Marshal(block)
+			if err != nil {
+				node.sendResponse(conn, "Error marshalling block")
+				return
+			}
+			node.sendResponse(conn, string(response))
 			return
 		}
-
-		switch msg["type"] {
-		case "blocks":
-			p.BroadcastBlockchain()
-		case "merkle_tree":
-			p.BroadcastMerkleTree()
-		case "mine_block":
-			data, ok := msg["data"].(string)
-			if ok {
-				p.MineAndBroadcastBlock(data)
-			}
-		}
 	}
+
+	node.sendResponse(conn, "Block not found")
 }
 
-func (p *P2P) BroadcastMessage(msg map[string]interface{}) {
-	for _, node := range p.Nodes {
-		if err := node.WriteJSON(msg); err != nil {
-			log.Println(err)
-		}
-	}
+// addTransaction adds a new transaction to the blockchain
+func (node *P2PNode) addTransaction(data []byte) {
+	transaction := blockchain.NewTransaction(data)
+	node.Blockchain.Mu.Lock()
+	defer node.Blockchain.Mu.Unlock()
+
+	// Placeholder: In a real P2P network, transactions would be broadcasted to other nodes
+	// Here, we simply add the transaction to the local blockchain
+	block := blockchain.NewBlock([]*blockchain.Transaction{transaction}, node.Blockchain.Blocks[len(node.Blockchain.Blocks)-1].Hash)
+	node.Blockchain.Blocks = append(node.Blockchain.Blocks, block)
+}
+
+// sendResponse sends a response to the client
+func (node *P2PNode) sendResponse(conn net.Conn, response string) {
+	conn.Write([]byte(response + "\n"))
 }
