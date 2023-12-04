@@ -1,95 +1,115 @@
-// main.go
-
 package main
 
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/nnkienn/lab1-blc/blockchain"
-	"github.com/nnkienn/lab1-blc/p2p"
 )
 
-var bc = blockchain.NewBlockchain()
-var p2pHandler = p2p.GetP2PInstance()
+// ... (rest of the code)
+
+var (
+	mu           sync.Mutex
+	blockchain   []*blockchain.Block
+	transactions []*blockchain.Transaction
+	peers        []string
+)
 
 func main() {
-	var ports []string
+	// Run multiple instances on different ports
+	go runBlockchain(":8080")
+	go runBlockchain(":8081")
 
-	// Check if there are command line arguments
-	if len(os.Args) > 1 {
-		ports = os.Args[1:]
-	} else {
-		// If no arguments, use the default port 3001
-		ports = []string{"3001"}
-	}
+	// Allow time for instances to start
+	time.Sleep(2 * time.Second)
 
-	// Create a list of routers and worker goroutines
-	routers := make([]*mux.Router, len(ports))
-	for i, port := range ports {
-		// Create a new router for each port
-		routers[i] = mux.NewRouter()
+	// Connect peers
+	connectPeers()
 
-		// Register router endpoints
-		routers[i].HandleFunc("/blocks", GetBlocksEndpoint).Methods("GET")
-		routers[i].HandleFunc("/mineBlock", MineBlockEndpoint).Methods("POST")
-		routers[i].HandleFunc("/ws", p2pHandler.HandleP2PConnection)
-
-		// Start a worker goroutine for each port
-		go func(p string, r *mux.Router) {
-			port := ":" + p
-			fmt.Println("Listening on port", port)
-			log.Fatal(http.ListenAndServe(port, r))
-		}(port, routers[i])
-	}
-
-	go PeriodicallyBroadcastMerkleTree()
-
-	// Wait for all worker goroutines to complete
 	select {}
 }
 
-// GetBlocksEndpoint returns the blockchain as JSON
-func GetBlocksEndpoint(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+func runBlockchain(port string) {
+	r := mux.NewRouter()
 
-	blocks := bc.GetBlocks()
+	r.HandleFunc("/blocks", GetBlocks).Methods("GET")
+	r.HandleFunc("/addblock", AddBlock).Methods("POST")
+	r.HandleFunc("/addtransaction", AddTransaction).Methods("POST")
 
-	for _, block := range blocks {
-		for _, transaction := range block.Transactions {
-			fmt.Printf("Transaction Data: %s\n", string(transaction.Data))
-		}
-	}
+	http.Handle("/", r)
 
-	json.NewEncoder(w).Encode(blocks)
+	fmt.Printf("Server listening on %s\n", port)
+	http.ListenAndServe(port, nil)
 }
 
-// MineBlockEndpoint mines a new block and broadcasts it
-func MineBlockEndpoint(w http.ResponseWriter, r *http.Request) {
-	var data map[string]string
+func connectPeers() {
+	mu.Lock()
+	defer mu.Unlock()
 
-	err := json.NewDecoder(r.Body).Decode(&data)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	for _, port := range []string{":8080", ":8081"} {
+		if len(peers) == 0 || port != peers[0] {
+			peers = append(peers, fmt.Sprintf("http://localhost%s", port))
+		}
+	}
+}
+
+func GetBlocks(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	json.NewEncoder(w).Encode(blockchain)
+}
+
+func AddBlock(w http.ResponseWriter, r *http.Request) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	prevBlock := blockchain[len(blockchain)-1]
+	newBlock := blockchain.NewBlock(transactions, prevBlock.Hash)
+	transactions = nil
+	blockchain = append(blockchain, newBlock)
+
+	// Broadcast the new block to peers
+	go broadcastBlock(newBlock)
+
+	json.NewEncoder(w).Encode(newBlock)
+}
+
+func broadcastBlock(newBlock *blockchain.Block) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	for _, peer := range peers {
+		go func(peerAddr string) {
+			resp, err := http.Post(peerAddr+"/addblock", "application/json", nil)
+			if err != nil {
+				fmt.Println("Error broadcasting block to", peerAddr, ":", err)
+				return
+			}
+			defer resp.Body.Close()
+		}(peer)
+	}
+}
+
+func AddTransaction(w http.ResponseWriter, r *http.Request) {
+	var data struct {
+		Data string `json:"data"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	// Mine a new block with the provided data
-	p2pHandler.MineAndBroadcastBlock(data["data"])
+	newTransaction := blockchain.NewTransaction([]byte(data.Data))
+	mu.Lock()
+	defer mu.Unlock()
+	transactions = append(transactions, newTransaction)
 
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Block mined and broadcasted"))
-}
-
-// PeriodicallyBroadcastMerkleTree broadcasts the Merkle tree periodically
-func PeriodicallyBroadcastMerkleTree() {
-	for {
-		p2pHandler.BroadcastMerkleTree()
-		time.Sleep(10 * time.Second)
-	}
 }
